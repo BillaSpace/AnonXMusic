@@ -2,11 +2,9 @@
 # Licensed under the MIT License.
 # This file is part of AnonXMusic
 
-
 from random import randint
 from time import time
-
-from motor.motor_asyncio import AsyncIOMotorClient  # ✅ Correct async Mongo client
+from motor.motor_asyncio import AsyncIOMotorClient
 
 from anony import config, logger, userbot
 
@@ -17,7 +15,7 @@ class MongoDB:
         self.mongo = AsyncIOMotorClient(config.MONGO_URL, serverSelectionTimeoutMS=12500)
         self.db = self.mongo.Anon
 
-        # Cache containers
+        # Runtime caches
         self.admin_list = {}
         self.active_calls = {}
         self.blacklisted = []
@@ -27,10 +25,10 @@ class MongoDB:
         self.auth = {}
         self.chats = []
         self.lang = {}
-        self.play_mode = {}  # now stores per-chat mode string (not list)
+        self.play_mode = {}
         self.users = []
 
-        # DB Collections
+        # Collections
         self.cache = self.db.cache
         self.assistantdb = self.db.assistant
         self.authdb = self.db.auth
@@ -41,7 +39,6 @@ class MongoDB:
 
     # --------------------------- CONNECTION --------------------------- #
     async def connect(self) -> None:
-        """Connect to MongoDB and warm up cache."""
         try:
             start = time()
             await self.mongo.admin.command("ping")
@@ -54,7 +51,7 @@ class MongoDB:
         await self.mongo.close()
         logger.info("Database connection closed.")
 
-    # --------------------------- CACHE --------------------------- #
+    # --------------------------- CALLS --------------------------- #
     async def get_call(self, chat_id: int) -> bool:
         return chat_id in self.active_calls
 
@@ -122,73 +119,14 @@ class MongoDB:
     async def get_client(self, chat_id: int):
         if chat_id not in self.assistant:
             await self.get_assistant(chat_id)
-        return {1: userbot.one, 2: userbot.two, 3: userbot.three}.get(self.assistant[chat_id])
+        return {
+            1: getattr(userbot, "one", None),
+            2: getattr(userbot, "two", None),
+            3: getattr(userbot, "three", None),
+        }.get(self.assistant.get(chat_id), userbot.one)
 
-    # --------------------------- BLACKLIST --------------------------- #
-    async def add_blacklist(self, chat_id: int) -> None:
-        target = "bl_chats" if str(chat_id).startswith("-") else "bl_users"
-        key = "chat_ids" if target == "bl_chats" else "user_ids"
-        await self.cache.update_one({"_id": target}, {"$addToSet": {key: chat_id}}, upsert=True)
-
-    async def del_blacklist(self, chat_id: int) -> None:
-        target = "bl_chats" if str(chat_id).startswith("-") else "bl_users"
-        key = "chat_ids" if target == "bl_chats" else "user_ids"
-        await self.cache.update_one({"_id": target}, {"$pull": {key: chat_id}})
-
-    async def get_blacklisted(self, chat: bool = False) -> list[int]:
-        key = "chat_ids" if chat else "user_ids"
-        doc = await self.cache.find_one({"_id": "bl_chats" if chat else "bl_users"})
-        return doc.get(key, []) if doc else []
-
-    # --------------------------- CHAT --------------------------- #
-    async def is_chat(self, chat_id: int) -> bool:
-        return chat_id in self.chats
-
-    async def add_chat(self, chat_id: int) -> None:
-        if not await self.is_chat(chat_id):
-            self.chats.append(chat_id)
-            await self.chatsdb.insert_one({"_id": chat_id})
-
-    async def rm_chat(self, chat_id: int) -> None:
-        if await self.is_chat(chat_id):
-            self.chats.remove(chat_id)
-            await self.chatsdb.delete_one({"_id": chat_id})
-
-    async def get_chats(self) -> list:
-        if not self.chats:
-            self.chats.extend([chat["_id"] async for chat in self.chatsdb.find()])
-        return self.chats
-
-    # --------------------------- LANGUAGE --------------------------- #
-    async def set_lang(self, chat_id: int, lang_code: str):
-        await self.langdb.update_one(
-            {"_id": chat_id}, {"$set": {"lang": lang_code}}, upsert=True
-        )
-        self.lang[chat_id] = lang_code
-
-    async def get_lang(self, chat_id: int) -> str:
-        if chat_id not in self.lang:
-            doc = await self.langdb.find_one({"_id": chat_id})
-            self.lang[chat_id] = doc["lang"] if doc else "en"
-        return self.lang[chat_id]
-
-    # --------------------------- LOGGER --------------------------- #
-    async def is_logger(self) -> bool:
-        return self.logger
-
-    async def get_logger(self) -> bool:
-        doc = await self.cache.find_one({"_id": "logger"})
-        if doc:
-            self.logger = doc["status"]
-        return self.logger
-
-    async def set_logger(self, status: bool) -> None:
-        self.logger = status
-        await self.cache.update_one({"_id": "logger"}, {"$set": {"status": status}}, upsert=True)
-
-    # --------------------------- PLAY MODE (Spotify/YT) --------------------------- #
+    # --------------------------- PLAY MODE --------------------------- #
     async def set_mode(self, chat_id: int, mode: str) -> None:
-        """Set play mode to 'spotify' or 'youtube'."""
         await self.playmodedb.update_one(
             {"_id": chat_id},
             {"$set": {"mode": mode.lower()}},
@@ -197,45 +135,12 @@ class MongoDB:
         self.play_mode[chat_id] = mode.lower()
 
     async def get_mode(self, chat_id: int) -> str:
-        """Get play mode for chat."""
         if chat_id not in self.play_mode:
             doc = await self.playmodedb.find_one({"_id": chat_id})
             self.play_mode[chat_id] = doc["mode"] if doc else "youtube"
         return self.play_mode[chat_id]
 
-    # --------------------------- SUDO --------------------------- #
-    async def add_sudo(self, user_id: int) -> None:
-        await self.cache.update_one(
-            {"_id": "sudoers"}, {"$addToSet": {"user_ids": user_id}}, upsert=True
-        )
-
-    async def del_sudo(self, user_id: int) -> None:
-        await self.cache.update_one({"_id": "sudoers"}, {"$pull": {"user_ids": user_id}})
-
-    async def get_sudoers(self) -> list[int]:
-        doc = await self.cache.find_one({"_id": "sudoers"})
-        return doc.get("user_ids", []) if doc else []
-
-    # --------------------------- USERS --------------------------- #
-    async def is_user(self, user_id: int) -> bool:
-        return user_id in self.users
-
-    async def add_user(self, user_id: int) -> None:
-        if not await self.is_user(user_id):
-            self.users.append(user_id)
-            await self.usersdb.insert_one({"_id": user_id})
-
-    async def rm_user(self, user_id: int) -> None:
-        if await self.is_user(user_id):
-            self.users.remove(user_id)
-            await self.usersdb.delete_one({"_id": user_id})
-
-    async def get_users(self) -> list:
-        if not self.users:
-            self.users.extend([user["_id"] async for user in self.usersdb.find()])
-        return self.users
-
-    # --------------------------- CACHE WARMUP --------------------------- #
+    # --------------------------- CACHE LOAD --------------------------- #
     async def load_cache(self) -> None:
         await self.get_chats()
         await self.get_users()
