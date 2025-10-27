@@ -36,7 +36,7 @@ class MongoDB:
         self.langdb = self.db.lang
         self.playmodedb = self.db.play
         self.usersdb = self.db.users
-
+        
     # --------------------------- CONNECTION --------------------------- #
     async def connect(self) -> None:
         """Connect to MongoDB and pre-load cache."""
@@ -223,11 +223,26 @@ class MongoDB:
         if await self.is_user(user_id):
             self.users.remove(user_id)
             await self.usersdb.delete_one({"_id": user_id})
-
+    
     async def get_users(self) -> list:
         if not self.users:
             self.users.extend([user["_id"] async for user in self.usersdb.find()])
         return self.users
+
+    # --------------------------- SUDOERS --------------------------- #
+    async def add_sudo(self, user_id: int) -> None:
+        await self.cache.update_one(
+            {"_id": "sudoers"}, {"$addToSet": {"user_ids": user_id}}, upsert=True
+        )
+
+    async def del_sudo(self, user_id: int) -> None:
+        await self.cache.update_one(
+            {"_id": "sudoers"}, {"$pull": {"user_ids": user_id}}
+        )
+
+    async def get_sudoers(self) -> list[int]:
+        doc = await self.cache.find_one({"_id": "sudoers"})
+        return doc.get("user_ids", []) if doc else []
 
     # --------------------------- CACHE LOAD --------------------------- #
     async def load_cache(self) -> None:
