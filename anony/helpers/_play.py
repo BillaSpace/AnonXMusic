@@ -2,10 +2,8 @@
 # Licensed under the MIT License.
 # This file is part of AnonXMusic
 
-
 import re
 import asyncio
-
 from pyrogram import enums, errors, types
 from anony import app, config, db, yt, sp  # sp = Spotify instance
 
@@ -79,20 +77,18 @@ def checkUB(play):
                     return await m.reply_text(m.lang["play_unsupported"])
 
         # -------------------------
-        # 4️⃣ Fetch play mode from DB
+        # 4️⃣ Fetch play mode from DB (Unified)
         # -------------------------
         try:
-            play_mode = await db.get_play_mode(m.chat.id)
-        except AttributeError:
-            try:
-                play_mode = await db.get_mode(m.chat.id)
-            except Exception:
-                play_mode = None
+            play_mode = await db.get_mode(m.chat.id)
         except Exception:
-            play_mode = None
-
-        if not play_mode:
             play_mode = "youtube"
+
+        if play_mode not in ["youtube", "spotify"]:
+            play_mode = "youtube"
+
+        # Debug (optional)
+        # print(f"[DEBUG] Mode for {m.chat.id}: {play_mode}")
 
         # -------------------------
         # 5️⃣ Admin/authorization checks
