@@ -244,6 +244,18 @@ class MongoDB:
         doc = await self.cache.find_one({"_id": "sudoers"})
         return doc.get("user_ids", []) if doc else []
 
+  # --------------------------- LANGUAGE --------------------------- #
+    async def get_lang(self, chat_id: int) -> str:
+        """Get language code for a chat (default: 'en')."""
+        doc = await self.cache.find_one({"_id": f"lang_{chat_id}"})
+        return doc.get("lang", "en") if doc else "en"
+
+    async def set_lang(self, chat_id: int, lang: str) -> None:
+        """Set language code for a chat."""
+        await self.cache.update_one(
+            {"_id": f"lang_{chat_id}"}, {"$set": {"lang": lang}}, upsert=True
+        )
+    
     # --------------------------- CACHE LOAD --------------------------- #
     async def load_cache(self) -> None:
         await self.get_chats()
