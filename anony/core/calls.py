@@ -2,14 +2,13 @@
 # Licensed under the MIT License.
 # This file is part of AnonXMusic
 
-
 import asyncio
 from ntgcalls import ConnectionNotFound, TelegramServerError
 from pyrogram.types import InputMediaPhoto, Message
 from pytgcalls import PyTgCalls, exceptions, types
 from pytgcalls.pytgcalls_session import PyTgCallsSession
 
-from anony import app, config, db, lang, logger, queue, userbot, yt, sp
+from anony import app, config, db, lang, logger, queue, userbot, yt
 from anony.helpers import Media, Track, buttons, thumb
 
 
@@ -131,11 +130,14 @@ class TgCall(PyTgCalls):
         _lang = await lang.get_lang(chat_id)
         msg = await app.send_message(chat_id=chat_id, text=_lang["play_next"])
 
-        # ✅ Handle Spotify / YouTube based on media URL
+        #  Lazy import Spotify here to avoid circular import
+        from anony.core.spotify import Spotify
+        sp = Spotify()
+
+        #  Handle Spotify / YouTube download
         try:
             if "spotify.com" in (media.url or "").lower():
                 if not media.file_path:
-                    # sp.download should return a local file path
                     media.file_path = await sp.download(media.url)
             else:
                 if not media.file_path:
