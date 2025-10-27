@@ -3,7 +3,6 @@
 # This file is part of AnonXMusic
 
 from pyrogram import filters, types
-
 from anony import anon, app, config, db, lang, queue, tg, yt, sp
 from anony.helpers import buttons, utils
 from anony.helpers._play import checkUB
@@ -22,7 +21,7 @@ async def play_hndlr(
     force: bool = False,
     video: bool = False,
     url: str = None,
-    play_mode: str = "youtube",  # fetched from decorator/DB
+    play_mode: str = None,
 ) -> None:
     """
     Handles /play and /vplay commands.
@@ -39,7 +38,7 @@ async def play_hndlr(
     # 2️⃣ Replied media check
     media = tg.get_media(m.reply_to_message) if m.reply_to_message else None
     file = None
-    platform = play_mode  # default from DB
+    platform = play_mode or "youtube"  # fallback default
 
     # 3️⃣ Detect platform from URL
     if url:
@@ -55,11 +54,9 @@ async def play_hndlr(
     # 4️⃣ Handle text query (based on DB mode only)
     elif len(m.command) >= 2:
         query = " ".join(m.command[1:])
-        if play_mode == "spotify":
-            platform = "spotify"
+        if platform == "spotify":
             file = await sp.search(query, sent.id)
         else:
-            platform = "youtube"
             file = await yt.search(query, sent.id, video=video)
 
     # 5️⃣ Handle replied media
