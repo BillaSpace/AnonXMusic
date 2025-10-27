@@ -30,12 +30,12 @@ class TgCall(PyTgCalls):
         client = await db.get_assistant(chat_id)
         try:
             await client.leave_call(chat_id, close=False)
-        except:
+        except Exception:
             pass
         try:
             queue.clear(chat_id)
             await db.remove_call(chat_id)
-        except:
+        except Exception:
             pass
 
     async def play_media(
@@ -47,6 +47,7 @@ class TgCall(PyTgCalls):
     ) -> None:
         client = await db.get_assistant(chat_id)
         _lang = await lang.get_lang(chat_id)
+
         _thumb = (
             await thumb.generate(media)
             if isinstance(media, Track)
@@ -54,7 +55,9 @@ class TgCall(PyTgCalls):
         )
 
         if not media.file_path:
-            return await message.edit_text(_lang["error_no_file"].format(config.SUPPORT_CHAT))
+            return await message.edit_text(
+                _lang["error_no_file"].format(config.SUPPORT_CHAT)
+            )
 
         stream = types.MediaStream(
             media_path=media.file_path,
@@ -75,6 +78,7 @@ class TgCall(PyTgCalls):
                 stream=stream,
                 config=types.GroupCallConfig(auto_start=False),
             )
+
             if not seek_time:
                 media.playing = True
                 await db.add_call(chat_id)
@@ -104,39 +108,31 @@ class TgCall(PyTgCalls):
             return
         media = queue.get_current(chat_id)
         _lang = await lang.get_lang(chat_id)
-        msg = await app.send_message(chat_id=chat_id, text=_lang["play_again"])
+        msg = await app.send_message(chat_id, _lang["play_again"])
         await self.play_media(chat_id, msg, media)
 
     async def play_next(self, chat_id: int) -> None:
         if not await db.get_call(chat_id):
             return
 
-        m_id = queue.get_current(chat_id).message_id
+        current = queue.get_current(chat_id)
+        if current and getattr(current, "message_id", None):
+            try:
+                await app.delete_messages(chat_id, current.message_id)
+            except Exception:
+                pass
+
         media = queue.get_next(chat_id)
-
-        try:
-            await app.delete_messages(
-                chat_id=chat_id,
-                message_ids=[m_id, media.message_id if media else 0],
-                revoke=True,
-            )
-            media.message_id = None
-        except:
-            pass
-
         if not media:
             return await self.stop(chat_id)
 
         _lang = await lang.get_lang(chat_id)
-        msg = await app.send_message(chat_id=chat_id, text=_lang["play_next"])
+        msg = await app.send_message(chat_id, _lang["play_next"])
 
-        #  Lazy import Spotify here to avoid circular import
-        from anony.core.spotify import Spotify
-        sp = Spotify()
-
-        #  Handle Spotify / YouTube download
         try:
             if "spotify.com" in (media.url or "").lower():
+                from anony.core.spotify import Spotify
+                sp = Spotify()
                 if not media.file_path:
                     media.file_path = await sp.download(media.url)
             else:
@@ -153,24 +149,24 @@ class TgCall(PyTgCalls):
         await self.play_media(chat_id, msg, media)
 
     async def ping(self) -> float:
-        pings = [client.ping for client in self.clients]
+        if not self.clients:
+            return 0.0
+        pings = [c.ping for c in self.clients if hasattr(c, "ping")]
         return round(sum(pings) / len(pings), 2)
 
     async def decorators(self, client: PyTgCalls) -> None:
-        for client in self.clients:
-
-            @client.on_update()
-            async def update_handler(_, update: types.Update) -> None:
-                if isinstance(update, types.StreamEnded):
-                    if update.stream_type == types.StreamEnded.Type.AUDIO:
-                        await self.play_next(update.chat_id)
-                elif isinstance(update, types.ChatUpdate):
-                    if update.status in [
-                        types.ChatUpdate.Status.KICKED,
-                        types.ChatUpdate.Status.LEFT_GROUP,
-                        types.ChatUpdate.Status.CLOSED_VOICE_CHAT,
-                    ]:
-                        await self.stop(update.chat_id)
+        @client.on_update()
+        async def update_handler(_, update: types.Update) -> None:
+            if isinstance(update, types.StreamEnded):
+                if update.stream_type == types.StreamEnded.Type.AUDIO:
+                    await self.play_next(update.chat_id)
+            elif isinstance(update, types.ChatUpdate):
+                if update.status in [
+                    types.ChatUpdate.Status.KICKED,
+                    types.ChatUpdate.Status.LEFT_GROUP,
+                    types.ChatUpdate.Status.CLOSED_VOICE_CHAT,
+                ]:
+                    await self.stop(update.chat_id)
 
     async def boot(self) -> None:
         PyTgCallsSession.notice_displayed = True
