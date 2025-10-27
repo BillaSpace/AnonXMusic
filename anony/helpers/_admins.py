@@ -80,11 +80,24 @@ async def is_admin(chat_id: int, user_id: int) -> bool:
 
 
 async def reload_admins(chat_id: int) -> list[int]:
-    admins = [
-        admin
-        async for admin in app.get_chat_members(
-            chat_id, filter=enums.ChatMembersFilter.ADMINISTRATORS
-        )
-        if not admin.user.is_bot
-    ]
-    return [admin.user.id for admin in admins]
+    try:
+        chat = await app.get_chat(chat_id)
+
+        # ✅ Skip private chats (where no admins exist)
+        if chat.type == enums.ChatType.PRIVATE:
+            return [chat.id]  # Treat user as own admin (for private lang change, etc.)
+
+        admins = [
+            admin
+            async for admin in app.get_chat_members(
+                chat_id, filter=enums.ChatMembersFilter.ADMINISTRATORS
+            )
+            if not admin.user.is_bot
+        ]
+        return [admin.user.id for admin in admins]
+
+    except Exception as e:
+        import traceback
+        print(f"[WARN] Failed to reload admins for chat {chat_id}: {e}")
+        traceback.print_exc()
+        return []
