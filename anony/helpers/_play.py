@@ -12,7 +12,7 @@ def checkUB(play):
     """
     Decorator that:
     - Verifies user/chat validity
-    - Detects YouTube and Spotify URLs
+    - Detects YouTube and Spotify URLs exclusively
     - Fetches play mode from DB
     - Ensures assistant/client presence
     - Passes `force`, `video`, `url`, and `play_mode` to the play handler
@@ -47,16 +47,15 @@ def checkUB(play):
         video = m.command[0].startswith("v") and config.VIDEO_PLAY
 
         # -------------------------
-        # 3️⃣ URL detection (YouTube + Spotify)
+        # 3️⃣ URL detection (EXCLUSIVE YouTube / Spotify)
         # -------------------------
         url = None
-        try:
-            url = yt.url(m)  # Extract YouTube URL (if present)
-        except Exception:
-            url = None
+        play_mode = None
 
-        # Detect Spotify URLs
+        # Try to extract URL text
         text = (m.text or "") + " " + (m.caption or "")
+
+        # Spotify detection
         spotify_match = re.search(
             r"(https?://open\.spotify\.com/(track|album|playlist)/[A-Za-z0-9]+)(\?.*)?",
             text,
@@ -64,34 +63,47 @@ def checkUB(play):
         )
         spotify_url = spotify_match.group(1) if spotify_match else None
 
+        # YouTube detection
+        youtube_url = None
+        try:
+            youtube_url = yt.url(m)
+        except Exception:
+            youtube_url = None
+
+        # Exclusive priority: Spotify > YouTube
         if spotify_url:
             url = spotify_url
+            play_mode = "spotify"
+        elif youtube_url:
+            url = youtube_url
+            play_mode = "youtube"
 
-        # Validate URLs
+        # Validate the URL (if detected)
         if url:
-            if "spotify" in url.lower():
+            if play_mode == "spotify":
                 if not getattr(sp, "valid", lambda _: True)(url):
                     return await m.reply_text(m.lang["play_unsupported"])
-            else:
+            elif play_mode == "youtube":
                 if hasattr(yt, "valid") and not yt.valid(url):
                     return await m.reply_text(m.lang["play_unsupported"])
 
         # -------------------------
-        # 4️⃣ Fetch play mode from DB (Unified)
+        # 4️⃣ Fetch chat's stored mode (only if no URL override)
         # -------------------------
-        try:
-            play_mode = await db.get_mode(m.chat.id)
-        except Exception:
-            play_mode = "youtube"
+        if not play_mode:
+            try:
+                play_mode = await db.get_mode(m.chat.id)
+            except Exception:
+                play_mode = "youtube"
 
         if play_mode not in ["youtube", "spotify"]:
             play_mode = "youtube"
 
         # Debug (optional)
-        # print(f"[DEBUG] Mode for {m.chat.id}: {play_mode}")
+        # print(f"[DEBUG] Final Mode for {m.chat.id}: {play_mode}, URL={url}")
 
         # -------------------------
-        # 5️⃣ Admin/authorization checks
+        # 5️⃣ Admin / authorization checks
         # -------------------------
         if force:
             adminlist = await db.get_admins(m.chat.id)
@@ -103,7 +115,7 @@ def checkUB(play):
                 return await m.reply_text(m.lang["play_admin"])
 
         # -------------------------
-        # 6️⃣ Ensure assistant/client is in chat
+        # 6️⃣ Ensure assistant/client is present
         # -------------------------
         if m.chat.id not in db.active_calls:
             client = await db.get_client(m.chat.id)
@@ -171,7 +183,7 @@ def checkUB(play):
             pass
 
         # -------------------------
-        # 8️⃣ Call wrapped play() with args
+        # 8️⃣ Call wrapped play() handler with unified args
         # -------------------------
         return await play(_, m, force, video, url, play_mode)
 
