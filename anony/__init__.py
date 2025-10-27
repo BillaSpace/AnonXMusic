@@ -2,7 +2,6 @@
 # Licensed under the MIT License.
 # This file is part of AnonXMusic
 
-
 import time
 import logging
 from logging.handlers import RotatingFileHandler
@@ -22,7 +21,6 @@ logging.getLogger("pymongo").setLevel(logging.ERROR)
 logging.getLogger("pyrogram").setLevel(logging.ERROR)
 logging.getLogger("pytgcalls").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
-
 
 __version__ = "3.0.0"
 
@@ -50,8 +48,10 @@ lang = Language()
 
 from anony.core.telegram import Telegram
 from anony.core.youtube import YouTube
+from anony.core.spotify import Spotify   # ✅ Add this line
 tg = Telegram()
 yt = YouTube()
+sp = Spotify()                           # ✅ And this one
 
 from anony.helpers import Queue
 queue = Queue()
