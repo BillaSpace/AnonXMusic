@@ -7,35 +7,36 @@ import re
 import asyncio
 
 from pyrogram import enums, errors, types
-
-from anony import app, config, db, yt, sp  # sp = Spotify instance exported from anony (project-wide)
-# If your project exposes spotify instance under another name, adjust the import above.
+from anony import app, config, db, yt, sp  # sp = Spotify instance
 
 
 def checkUB(play):
     """
-    Decorator that validates user, chat, permissions, and bot presence
-    before executing a playback command.
-
-    - Supports URL detection for YouTube (via yt.url) and Spotify (open.spotify.com).
-    - Reads play mode from DB and passes it to the wrapped `play` function.
-    - Preserves existing permission logic (force/admin checks).
-    - Ensures assistant/userbot joins the chat if required.
+    Decorator that:
+    - Verifies user/chat validity
+    - Detects YouTube and Spotify URLs
+    - Fetches play mode from DB
+    - Ensures assistant/client presence
+    - Passes `force`, `video`, `url`, and `play_mode` to the play handler
     """
 
     async def wrapper(_, m: types.Message):
         # -------------------------
-        # 1) Basic user / chat checks
+        # 1️⃣ User and chat validity
         # -------------------------
         if not m.from_user:
             return await m.reply_text(m.lang["play_user_invalid"])
 
         if m.chat.type != enums.ChatType.SUPERGROUP:
             await m.reply_text(m.lang["play_chat_invalid"])
-            return await app.leave_chat(m.chat.id)
+            try:
+                await app.leave_chat(m.chat.id)
+            except Exception:
+                pass
+            return
 
         # -------------------------
-        # 2) Command / argument checks
+        # 2️⃣ Command parsing
         # -------------------------
         if not m.reply_to_message and (
             len(m.command) < 2 or (len(m.command) == 2 and m.command[1] == "-f")
@@ -45,20 +46,18 @@ def checkUB(play):
         force = m.command[0].endswith("force") or (
             len(m.command) > 1 and "-f" in m.command[1]
         )
-        video = m.command[0][0] == "v" and config.VIDEO_PLAY
+        video = m.command[0].startswith("v") and config.VIDEO_PLAY
 
         # -------------------------
-        # 3) URL detection:
-        #    - Prefer yt.url(m) (existing YouTube extractor)
-        #    - Also scan message/caption for Spotify links
+        # 3️⃣ URL detection (YouTube + Spotify)
         # -------------------------
         url = None
         try:
-            url = yt.url(m)  # existing helper that extracts URLs (mostly youtube in your code)
+            url = yt.url(m)  # Extract YouTube URL (if present)
         except Exception:
             url = None
 
-        # try to find spotify link in message/caption if present
+        # Detect Spotify URLs
         text = (m.text or "") + " " + (m.caption or "")
         spotify_match = re.search(
             r"(https?://open\.spotify\.com/(track|album|playlist)/[A-Za-z0-9]+)(\?.*)?",
@@ -67,29 +66,24 @@ def checkUB(play):
         )
         spotify_url = spotify_match.group(1) if spotify_match else None
 
-        # If we found a spotify link, prefer it as the 'url' to pass along
         if spotify_url:
             url = spotify_url
 
-        # validate url(s): if url exists and is a youtube url the yt.valid check helps
+        # Validate URLs
         if url:
-            # if it's a spotify link, validate via sp.valid
             if "spotify" in url.lower():
-                if not getattr(sp, "valid", lambda u: True)(url):
+                if not getattr(sp, "valid", lambda _: True)(url):
                     return await m.reply_text(m.lang["play_unsupported"])
             else:
-                # fallback to youtube validation if possible
                 if hasattr(yt, "valid") and not yt.valid(url):
                     return await m.reply_text(m.lang["play_unsupported"])
 
         # -------------------------
-        # 4) Fetch play mode from DB
-        #    Support both db.get_play_mode and db.get_mode (safe fallback)
+        # 4️⃣ Fetch play mode from DB
         # -------------------------
         try:
             play_mode = await db.get_play_mode(m.chat.id)
         except AttributeError:
-            # older/newer naming fallback
             try:
                 play_mode = await db.get_mode(m.chat.id)
             except Exception:
@@ -97,14 +91,13 @@ def checkUB(play):
         except Exception:
             play_mode = None
 
-        # default to youtube if no mode set
         if not play_mode:
             play_mode = "youtube"
 
         # -------------------------
-        # 5) Admin/authorized check for mode or force (preserves original behavior)
+        # 5️⃣ Admin/authorization checks
         # -------------------------
-        if play_mode or force:
+        if force:
             adminlist = await db.get_admins(m.chat.id)
             if (
                 m.from_user.id not in adminlist
@@ -114,7 +107,7 @@ def checkUB(play):
                 return await m.reply_text(m.lang["play_admin"])
 
         # -------------------------
-        # 6) Ensure assistant / client presence in chat (same logic as before)
+        # 6️⃣ Ensure assistant/client is in chat
         # -------------------------
         if m.chat.id not in db.active_calls:
             client = await db.get_client(m.chat.id)
@@ -125,41 +118,34 @@ def checkUB(play):
                     enums.ChatMemberStatus.RESTRICTED,
                 ]:
                     try:
-                        await app.unban_chat_member(
-                            chat_id=m.chat.id, user_id=client.id
-                        )
+                        await app.unban_chat_member(m.chat.id, client.id)
                     except Exception:
                         return await m.reply_text(
                             m.lang["play_banned"].format(
                                 app.name,
                                 client.id,
                                 client.mention,
-                                f"@{client.username}" if client.username else None,
+                                f"@{client.username}" if client.username else "",
                             )
                         )
             except errors.ChatAdminRequired:
                 return await m.reply_text(m.lang["admin_required"])
             except errors.UserNotParticipant:
-                # try to resolve an invite / join
-                if m.chat.username:
-                    invite_link = m.chat.username
-                    try:
-                        await client.resolve_peer(invite_link)
-                    except Exception:
-                        pass
-                else:
-                    try:
-                        invite_link = (await app.get_chat(m.chat.id)).invite_link
-                        if not invite_link:
-                            invite_link = await app.export_chat_invite_link(m.chat.id)
-                    except errors.ChatAdminRequired:
-                        return await m.reply_text(m.lang["admin_required"])
-                    except Exception as ex:
-                        return await m.reply_text(
-                            m.lang["play_invite_error"].format(type(ex).__name__)
-                        )
+                # Attempt to join the chat
+                invite_link = None
+                try:
+                    chat = await app.get_chat(m.chat.id)
+                    invite_link = chat.invite_link or await app.export_chat_invite_link(
+                        m.chat.id
+                    )
+                except errors.ChatAdminRequired:
+                    return await m.reply_text(m.lang["admin_required"])
+                except Exception as ex:
+                    return await m.reply_text(
+                        m.lang["play_invite_error"].format(type(ex).__name__)
+                    )
 
-                umm = await m.reply_text(m.lang["play_invite"].format(app.name))
+                joining = await m.reply_text(m.lang["play_invite"].format(app.name))
                 await asyncio.sleep(2)
                 try:
                     await client.join_chat(invite_link)
@@ -169,19 +155,19 @@ def checkUB(play):
                     try:
                         await client.approve_chat_join_request(m.chat.id, client.id)
                     except Exception as ex:
-                        return await umm.edit_text(
+                        return await joining.edit_text(
                             m.lang["play_invite_error"].format(type(ex).__name__)
                         )
                 except Exception as ex:
-                    return await umm.edit_text(
+                    return await joining.edit_text(
                         m.lang["play_invite_error"].format(type(ex).__name__)
                     )
 
-                await umm.delete()
+                await joining.delete()
                 await client.resolve_peer(m.chat.id)
 
         # -------------------------
-        # 7) Try to delete the original trigger message (best-effort)
+        # 7️⃣ Try deleting the trigger message (best-effort)
         # -------------------------
         try:
             await m.delete()
@@ -189,8 +175,7 @@ def checkUB(play):
             pass
 
         # -------------------------
-        # 8) Call wrapped play function
-        #    Pass url and play_mode so the play handler will choose Spotify/YouTube accordingly
+        # 8️⃣ Call wrapped play() with args
         # -------------------------
         return await play(_, m, force, video, url, play_mode)
 
