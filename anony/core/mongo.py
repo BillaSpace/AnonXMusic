@@ -16,6 +16,7 @@ class MongoDB:
         try:
             self.mongo = AsyncIOMotorClient(config.MONGO_URL, serverSelectionTimeoutMS=12500)
             self.db = self.mongo.Anon
+            logger.info("MongoDB client initialized successfully.")
         except Exception as e:
             logger.error(f"Failed to initialize MongoDB client: {type(e).__name__}: {e}")
             raise SystemExit(f"Failed to initialize MongoDB client: {type(e).__name__}") from e
@@ -42,7 +43,6 @@ class MongoDB:
         self.playmodedb = self.db.play
         self.usersdb = self.db.users
 
-    # --------------------------- CONNECTION --------------------------- #
     async def connect(self) -> None:
         """Connect to MongoDB and warm up cache."""
         if not self.mongo:
@@ -66,11 +66,10 @@ class MongoDB:
             except Exception as e:
                 logger.error(f"Error closing MongoDB connection: {type(e).__name__}: {e}")
             finally:
-                self.mongo = None  # Reset to None after closing
+                self.mongo = None
         else:
             logger.warning("No MongoDB connection to close.")
 
-    # --------------------------- CACHE --------------------------- #
     async def get_call(self, chat_id: int) -> bool:
         return chat_id in self.active_calls
 
@@ -85,14 +84,12 @@ class MongoDB:
             self.active_calls[chat_id] = int(not paused)
         return bool(self.active_calls.get(chat_id, 0))
 
-    # --------------------------- ADMINS --------------------------- #
     async def get_admins(self, chat_id: int, reload: bool = False) -> list[int]:
         from anony.helpers._admins import reload_admins
         if chat_id not in self.admin_list or reload:
             self.admin_list[chat_id] = await reload_admins(chat_id)
         return self.admin_list[chat_id]
 
-    # --------------------------- AUTH --------------------------- #
     async def _get_auth(self, chat_id: int) -> set[int]:
         if chat_id not in self.auth:
             doc = await self.authdb.find_one({"_id": chat_id}) or {}
@@ -118,7 +115,6 @@ class MongoDB:
                 {"_id": chat_id}, {"$pull": {"user_ids": user_id}}
             )
 
-    # --------------------------- ASSISTANTS --------------------------- #
     async def set_assistant(self, chat_id: int) -> int:
         num = randint(1, len(userbot.clients))
         await self.assistantdb.update_one(
@@ -140,7 +136,6 @@ class MongoDB:
             await self.get_assistant(chat_id)
         return {1: userbot.one, 2: userbot.two, 3: userbot.three}.get(self.assistant[chat_id])
 
-    # --------------------------- BLACKLIST --------------------------- #
     async def add_blacklist(self, chat_id: int) -> None:
         target = "bl_chats" if str(chat_id).startswith("-") else "bl_users"
         key = "chat_ids" if target == "bl_chats" else "user_ids"
@@ -156,7 +151,6 @@ class MongoDB:
         doc = await self.cache.find_one({"_id": "bl_chats" if chat else "bl_users"})
         return doc.get(key, []) if doc else []
 
-    # --------------------------- CHAT --------------------------- #
     async def is_chat(self, chat_id: int) -> bool:
         return chat_id in self.chats
 
@@ -175,7 +169,6 @@ class MongoDB:
             self.chats.extend([chat["_id"] async for chat in self.chatsdb.find()])
         return self.chats
 
-    # --------------------------- LANGUAGE --------------------------- #
     async def set_lang(self, chat_id: int, lang_code: str):
         await self.langdb.update_one(
             {"_id": chat_id}, {"$set": {"lang": lang_code}}, upsert=True
@@ -188,7 +181,6 @@ class MongoDB:
             self.lang[chat_id] = doc["lang"] if doc else "en"
         return self.lang[chat_id]
 
-    # --------------------------- LOGGER --------------------------- #
     async def is_logger(self) -> bool:
         return self.logger
 
@@ -202,7 +194,6 @@ class MongoDB:
         self.logger = status
         await self.cache.update_one({"_id": "logger"}, {"$set": {"status": status}}, upsert=True)
 
-    # --------------------------- PLAY MODE (Spotify/YT) --------------------------- #
     async def set_mode(self, chat_id: int, mode: str) -> None:
         """Set play mode to 'spotify' or 'youtube'."""
         await self.playmodedb.update_one(
@@ -219,7 +210,6 @@ class MongoDB:
             self.play_mode[chat_id] = doc["mode"] if doc else "youtube"
         return self.play_mode[chat_id]
 
-    # --------------------------- SUDO --------------------------- #
     async def add_sudo(self, user_id: int) -> None:
         await self.cache.update_one(
             {"_id": "sudoers"}, {"$addToSet": {"user_ids": user_id}}, upsert=True
@@ -232,7 +222,6 @@ class MongoDB:
         doc = await self.cache.find_one({"_id": "sudoers"})
         return doc.get("user_ids", []) if doc else []
 
-    # --------------------------- USERS --------------------------- #
     async def is_user(self, user_id: int) -> bool:
         return user_id in self.users
 
@@ -251,7 +240,6 @@ class MongoDB:
             self.users.extend([user["_id"] async for user in self.usersdb.find()])
         return self.users
 
-    # --------------------------- CACHE WARMUP --------------------------- #
     async def load_cache(self) -> None:
         try:
             await self.get_chats()
@@ -259,3 +247,6 @@ class MongoDB:
             await self.get_blacklisted(True)
             await self.get_logger()
             logger.info("Database cache loaded.")
+        except Exception as e:
+            logger.error(f"Failed to load cache: {type(e).__name__}: {e}")
+            raise
