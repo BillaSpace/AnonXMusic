@@ -37,6 +37,18 @@ class Utilities:
         parts = [int(p) for p in time.strip().split(":")]
         return sum(value * 60**i for i, value in enumerate(reversed(parts)))
 
+    
+    def format_duration(self, seconds: int) -> str:
+        """Convert seconds into mm:ss or hh:mm:ss format"""
+        if seconds < 0:
+            seconds = 0
+        h = seconds // 3600
+        m = (seconds % 3600) // 60
+        s = seconds % 60
+        if h:
+            return f"{h}:{m:02}:{s:02}"
+        return f"{m}:{s:02}"
+    
     async def extract_user(self, msg: types.Message) -> types.User | None:
         if msg.reply_to_message:
             return msg.reply_to_message.from_user
