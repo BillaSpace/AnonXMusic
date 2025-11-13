@@ -79,7 +79,7 @@ class YouTube:
                         break
 
         if link:
-            return link.split("&si")[0]
+            return link.split("&si")[0].split("?si")[0]
         return None
 
     async def search(self, query: str, m_id: int, video: bool = False) -> Track | None:
