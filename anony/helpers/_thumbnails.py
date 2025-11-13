@@ -9,10 +9,9 @@ from anony.helpers import Track
 class Thumbnail:
     def __init__(self):
         self.size = (1280, 720)
-        self.font_title = ImageFont.truetype("anony/helpers/DejaVuSans.ttf", 28)
-        self.font_info = ImageFont.truetype("anony/helpers/font.ttf", 28)
+        self.font_title = ImageFont.truetype("anony/helpers/DejaVuSansCO.ttf", 30)
+        self.font_info = ImageFont.truetype("anony/helpers/DejaVuSans.ttf", 28)
         self.font_play = ImageFont.truetype("anony/helpers/DejaVuSans.ttf", 32)
-
         self.card_fill = (235, 235, 235, 220)
         self.card_border = (220, 220, 220, 200)
         self.fill = (255, 255, 255, 235)
@@ -78,9 +77,7 @@ class Thumbnail:
 
             shadow = Image.new("RGBA", (portrait_size[0] + 40, portrait_size[1] + 40), (0, 0, 0, 0))
             shadow_draw = ImageDraw.Draw(shadow)
-            shadow_draw.rounded_rectangle(
-                (10, 10, portrait_size[0] + 10, portrait_size[1] + 10), corner_radius, fill=(0, 0, 0, 180)
-            )
+            shadow_draw.rounded_rectangle((10, 10, portrait_size[0] + 10, portrait_size[1] + 10), corner_radius, fill=(0, 0, 0, 180))
 
             center_x = self.size[0] // 2
             portrait_x = center_x - portrait_size[0] // 2
@@ -90,11 +87,7 @@ class Thumbnail:
             glow_size = (portrait_size[0] + glow_padding * 2, portrait_size[1] + glow_padding * 2)
             glow_mask = Image.new("L", glow_size, 0)
             gdraw = ImageDraw.Draw(glow_mask)
-            gdraw.rounded_rectangle(
-                (0, 0, glow_size[0], glow_size[1]),
-                corner_radius + glow_padding // 2,
-                fill=255
-            )
+            gdraw.rounded_rectangle((0, 0, glow_size[0], glow_size[1]), corner_radius + glow_padding // 2, fill=255)
             glow_mask = glow_mask.filter(ImageFilter.GaussianBlur(36))
 
             colors = self._get_dominant_colors(cover)
@@ -160,11 +153,53 @@ class Thumbnail:
             bar_fill_layer = bar_fill_layer.filter(ImageFilter.GaussianBlur(2))
             bg = Image.alpha_composite(bg, bar_fill_layer)
 
-
-            play_icon = "▷"
             play_x = bar_x + bar_width + 12
             play_y = fill_top_y + progress_height // 2
-            draw.text((play_x, play_y), play_icon, font=self.font_play, fill=(*dominant, 255), anchor="lm")
+
+            play_width = 28
+            play_height = int(play_width * 0.9)
+            half_h = play_height // 2
+
+            outer = [
+                (play_x, play_y - half_h),
+                (play_x, play_y + half_h),
+                (play_x + play_width, play_y)
+            ]
+
+            icon_layer = Image.new("RGBA", bg.size, (0, 0, 0, 0))
+            idraw = ImageDraw.Draw(icon_layer)
+
+            glow_layer = Image.new("RGBA", bg.size, (0, 0, 0, 0))
+            gdraw2 = ImageDraw.Draw(glow_layer)
+            gdraw2.polygon(outer, fill=(*dominant, 60))
+            glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(6))
+            icon_layer = Image.alpha_composite(icon_layer, glow_layer)
+
+            stroke_w = max(2, play_width // 10)
+            idraw.line([outer[0], outer[1]], fill=(*dominant, 255), width=stroke_w, joint="curve")
+            idraw.line([outer[1], outer[2]], fill=(*dominant, 255), width=stroke_w, joint="curve")
+            idraw.line([outer[2], outer[0]], fill=(*dominant, 255), width=stroke_w, joint="curve")
+
+            joint_r = stroke_w // 2 + 1
+            for (jx, jy) in outer:
+                idraw.ellipse((jx - joint_r, jy - joint_r, jx + joint_r, jy + joint_r), fill=(*dominant, 255))
+
+            inner_shrink = play_width * 0.18
+            inner = [
+                (play_x + inner_shrink * 0.0, play_y - half_h * (1 - inner_shrink / play_width)),
+                (play_x + inner_shrink * 0.0, play_y + half_h * (1 - inner_shrink / play_width)),
+                (play_x + play_width - inner_shrink, play_y)
+            ]
+            idraw.polygon(inner, fill=(0, 0, 0, 0))
+
+            inner_tri = [
+                (play_x + int(play_width * 0.1), play_y - int(half_h * 0.4)),
+                (play_x + int(play_width * 0.1), play_y + int(half_h * 0.4)),
+                (play_x + int(play_width * 0.6), play_y)
+            ]
+            idraw.polygon(inner_tri, fill=(255, 255, 255, 40))
+
+            bg = Image.alpha_composite(bg, icon_layer)
 
             draw.text((bar_x - 12, bar_top - 40), "0:00", font=self.font_info, fill=self.fill, anchor="rs")
             draw.text((bar_x - 12, bar_bottom + 10), "0:30", font=self.font_info, fill=self.fill, anchor="rs")
