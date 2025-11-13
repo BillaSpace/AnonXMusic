@@ -125,7 +125,7 @@ class Thumbnail:
 
             text_center_x = self.size[0] // 2
             draw.text((text_center_x, text_top), title_text, font=self.font_title, fill=(255, 255, 255, 255), anchor="ma")
-            draw.text((text_center_x, text_top + title_h + 6), info_text, font=self.font_info, fill=(255, 248, 230, 255), anchor="ma")
+            draw.text((text_center_x, text_top + title_h + 10), info_text, font=self.font_info, fill=(255, 248, 230, 255), anchor="ma")
 
             bar_width = 12
             bar_x = self.size[0] - self.margin_x
