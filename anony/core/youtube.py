@@ -102,13 +102,30 @@ class YouTube:
         return None
 
     async def playlist(self, *args) -> list[str]:
-        if len(args) == 1:
-            limit = args[0]
-            url = None
-        else:
-            limit = args[0]
-            url = args[-1]
-
+        limit = None
+        url = None
+        for a in args:
+            if isinstance(a, int):
+                limit = a
+            elif isinstance(a, str):
+                if a.startswith("http") or re.search(self.regex, a):
+                    url = a.split("&si")[0].split("?si")[0]
+                else:
+                    try:
+                        limit = int(a)
+                    except Exception:
+                        pass
+            else:
+                try:
+                    maybe = self.url(a)
+                    if maybe:
+                        url = maybe
+                except Exception:
+                    pass
+        if limit is None:
+            limit = 50
+        if not url:
+            return []
         vids = []
         ydl_opts = {
             "quiet": True,
