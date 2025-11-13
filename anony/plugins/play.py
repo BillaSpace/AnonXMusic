@@ -2,8 +2,8 @@
 # Licensed under the MIT License.
 # This file is part of AnonXMusic
 
-
 from pyrogram import filters, types
+import asyncio
 
 from anony import anon, app, config, db, lang, queue, tg, yt
 from anony.helpers import buttons, utils
@@ -40,16 +40,24 @@ async def play_hndlr(
     if url:
         if "playlist" in url:
             await sent.edit_text(m.lang["playlist_fetch"])
-            tracks = await yt.playlist(
-                config.PLAYLIST_LIMIT, mention, url, video
-            )
+            ids = await yt.playlist(config.PLAYLIST_LIMIT, url)
 
-            if not tracks:
+            if not ids:
                 return await sent.edit_text(m.lang["playlist_error"])
 
-            file = tracks[0]
-            tracks.remove(file)
+            first_id = ids.pop(0)
+            file = await yt.search(yt.base + first_id, sent.id, video=video)
+
+            if not file:
+                return await sent.edit_text(m.lang["playlist_error"])
+
             file.message_id = sent.id
+
+            if ids:
+                fetched = await asyncio.gather(
+                    *(yt.search(yt.base + vid, sent.id, video=video) for vid in ids)
+                )
+                tracks = [t for t in fetched if t]
         else:
             file = await yt.search(url, sent.id, video=video)
 
