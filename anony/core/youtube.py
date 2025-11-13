@@ -59,27 +59,18 @@ class YouTube:
 
     def url(self, message_1: types.Message) -> Union[str, None]:
         messages = [message_1]
-        link = None
         if message_1.reply_to_message:
             messages.append(message_1.reply_to_message)
-
         for message in messages:
             text = message.text or message.caption or ""
-
             if message.entities:
                 for entity in message.entities:
                     if entity.type == enums.MessageEntityType.URL:
-                        link = text[entity.offset : entity.offset + entity.length]
-                        break
-
+                        return text[entity.offset:entity.offset + entity.length]
             if message.caption_entities:
                 for entity in message.caption_entities:
                     if entity.type == enums.MessageEntityType.TEXT_LINK:
-                        link = entity.url
-                        break
-
-        if link:
-            return link.split("&si")[0].split("?si")[0]
+                        return entity.url
         return None
 
     async def search(self, query: str, m_id: int, video: bool = False) -> Track | None:
@@ -101,31 +92,7 @@ class YouTube:
             )
         return None
 
-    async def playlist(self, *args) -> list[str]:
-        limit = None
-        url = None
-        for a in args:
-            if isinstance(a, int):
-                limit = a
-            elif isinstance(a, str):
-                if a.startswith("http") or re.search(self.regex, a):
-                    url = a.split("&si")[0].split("?si")[0]
-                else:
-                    try:
-                        limit = int(a)
-                    except Exception:
-                        pass
-            else:
-                try:
-                    maybe = self.url(a)
-                    if maybe:
-                        url = maybe
-                except Exception:
-                    pass
-        if limit is None:
-            limit = 50
-        if not url:
-            return []
+    async def playlist(self, limit: int, url: str) -> list[str]:
         vids = []
         ydl_opts = {
             "quiet": True,
@@ -157,6 +124,7 @@ class YouTube:
                     if resp.status == 200:
                         return await resp.json()
                     logger.warning("YT API returned %s for %s", resp.status, url)
+                        # in case of soft failure
             except (asyncio.TimeoutError, aiohttp.ClientError, asyncio.CancelledError):
                 if attempt < retries:
                     await asyncio.sleep(1.5 * (attempt + 1))
