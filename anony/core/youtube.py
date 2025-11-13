@@ -101,7 +101,14 @@ class YouTube:
             )
         return None
 
-    async def playlist(self, limit: int, url: str) -> list[str]:
+    async def playlist(self, *args) -> list[str]:
+        if len(args) == 1:
+            limit = args[0]
+            url = None
+        else:
+            limit = args[0]
+            url = args[-1]
+
         vids = []
         ydl_opts = {
             "quiet": True,
@@ -133,7 +140,6 @@ class YouTube:
                     if resp.status == 200:
                         return await resp.json()
                     logger.warning("YT API returned %s for %s", resp.status, url)
-                        # in case of soft failure
             except (asyncio.TimeoutError, aiohttp.ClientError, asyncio.CancelledError):
                 if attempt < retries:
                     await asyncio.sleep(1.5 * (attempt + 1))
@@ -232,4 +238,3 @@ class YouTube:
             return await asyncio.to_thread(_download)
         except Exception:
             return None
-            
