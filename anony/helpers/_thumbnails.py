@@ -9,9 +9,9 @@ from anony.helpers import Track
 class Thumbnail:
     def __init__(self):
         self.size = (1280, 720)
-        self.font_title = ImageFont.truetype("anony/helpers/DejaVuSansCO.ttf", 30)
-        self.font_info = ImageFont.truetype("anony/helpers/DejaVuSans.ttf", 28)
-        self.font_play = ImageFont.truetype("anony/helpers/DejaVuSans.ttf", 32)
+        self.font_title = ImageFont.truetype("anony/helpers/NotoSans-Bold.ttf", 31)
+        self.font_info = ImageFont.truetype("anony/helpers/font2.ttf", 28)
+        self.font_play = ImageFont.truetype("anony/helpers/NotoSans-Bold.ttf", 32)
         self.card_fill = (235, 235, 235, 220)
         self.card_border = (220, 220, 220, 200)
         self.fill = (255, 255, 255, 235)
